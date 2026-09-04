@@ -27,4 +27,4 @@ Themes and plugins are free for everyone. A submission is a pull request; each r
 
 ---
 
-Marknote is made by Gregory Hulsmann. Marknote™ — trademark pending.
+Marknote is made by Gregory Hulsmann. © Gregory Hulsmann. All rights reserved.
