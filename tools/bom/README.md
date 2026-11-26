@@ -6,8 +6,9 @@ The organisation's software and cryptography bills of materials come from one pl
 
 | Artefact | File | How |
 | --- | --- | --- |
-| `sbom` | `bom/marknote-<slug>.cdx.json` | One BOM per shipped part (the dotnet `CycloneDX` tool 6.2.0 per csproj; `@cyclonedx/cyclonedx-npm` 6.0.1 for a vendored web folder; the `org.cyclonedx.bom` Gradle plugin 3.6.1 through [`cyclonedx.init.gradle`](cyclonedx.init.gradle); [`swiftpm-cyclonedx.mjs`](swiftpm-cyclonedx.mjs) over `Package.resolved`), merged by [`merge-cyclonedx.mjs`](merge-cyclonedx.mjs): components de-duplicated by purl, the dependency graph kept, one root whose direct dependencies are the union of the parts'. |
-| `cbom` | `bom/marknote-<slug>.cbom.cdx.json` | [`cbom.mjs`](cbom.mjs): the repository's `cbom/crypto-assets.json` rendered as `cryptographic-asset` components, each with the places the scanner saw it in the code; detections nobody declared and declarations the code no longer shows are marked, not fatal. |
+| `sbom` | `bom/marknote-<slug>.cdx.json` | One BOM per shipped part (the dotnet `CycloneDX` tool 6.2.0 per csproj; `@cyclonedx/cyclonedx-npm` 6.0.1 for a vendored web folder; the `org.cyclonedx.bom` Gradle plugin 3.6.1 through [`cyclonedx.init.gradle`](cyclonedx.init.gradle); [`swiftpm-cyclonedx.mjs`](swiftpm-cyclonedx.mjs) over `Package.resolved`), merged by [`merge-cyclonedx.mjs`](merge-cyclonedx.mjs): components de-duplicated by purl, the dependency graph kept, one root whose direct dependencies are the union of the parts'; a part's own application module (the Gradle plugin lists the Android client's `:app` as a component of type application under a root project that depends on nothing) is the product itself, left out, its dependencies counted as direct. |
+| `cbom` | `bom/marknote-<slug>.cbom.cdx.json` | [`cbom.mjs`](cbom.mjs): the repository's `cbom/crypto-assets.json` rendered as `cryptographic-asset` components, each with the places the scanner saw it in the code; detections nobody declared and declarations the code no longer shows are marked, not fatal. A library's purl is matched to the SBOM without its qualifiers, so `pkg:maven/g/a@1` finds the Gradle plugin's `pkg:maven/g/a@1?type=aar` and the component takes the SBOM's reference. |
+| `bom-parts` | `bom/parts/*.cdx.json` | The per-stack parts before the merge, kept seven days, for looking into a merge. |
 
 Both are checked by [`check.mjs`](check.mjs) before upload (required fields, enums, unique and resolving references). This repository's own [test workflow](../../.github/workflows/test.yml) also validates the fixtures against the full 1.6 schema with the CycloneDX CLI.
 
@@ -71,7 +72,7 @@ Occurrences carry a location, a line number and the matched symbol, never a line
 
 1. Write `cbom/crypto-assets.json`. Run the scanner locally until the drift is zero or every remaining line is a finding you mean to keep:
    `node tools/bom/cbom.mjs --manifest cbom/crypto-assets.json --root /path/to/repo --name "Product" --version local --out /tmp/x.cbom.cdx.json --check`
-2. Add the caller workflow above with the inputs for its stack, and run it by hand once.
+2. Add the caller workflow above with the inputs for its stack, and run it once. GitHub offers `workflow_dispatch` for a workflow only once the file is on the default branch; before that, a push to a branch named in `on.push.branches` is the way to run it (a throwaway branch with itself in the trigger, pointing at this repository's branch with `@<branch>` and `tools-ref: <branch>`, is how the six products were first tried).
 3. In Lighthouse, add the repository to `CiCdRepo.All` and `SbomProduct.All`; the GitHub App's installation must cover it with Actions read.
 
 ## Working on the tools
