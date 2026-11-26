@@ -1,0 +1,21 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-26T00:00:00Z",
+    "tools": { "components": [{ "type": "application", "name": "fixture-generator", "version": "1.0.0" }] },
+    "component": { "type": "application", "bom-ref": "Fixture.Part@test", "name": "Fixture.Part", "version": "test" }
+  },
+  "components": [
+    { "type": "library", "bom-ref": "pkg:nuget/Example.Crypto@1.0.0", "name": "Example.Crypto", "version": "1.0.0", "purl": "pkg:nuget/Example.Crypto@1.0.0", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:nuget/Stripe.net@53.0.0", "name": "Stripe.net", "version": "53.0.0", "purl": "pkg:nuget/Stripe.net@53.0.0" },
+    { "type": "library", "bom-ref": "pkg:nuget/System.Text.Json@10.0.0", "name": "System.Text.Json", "version": "10.0.0", "purl": "pkg:nuget/System.Text.Json@10.0.0", "licenses": [{ "license": { "id": "MIT" } }] }
+  ],
+  "dependencies": [
+    { "ref": "Fixture.Part@test", "dependsOn": ["pkg:nuget/Example.Crypto@1.0.0", "pkg:nuget/Stripe.net@53.0.0"] },
+    { "ref": "pkg:nuget/Example.Crypto@1.0.0", "dependsOn": ["pkg:nuget/System.Text.Json@10.0.0"] },
+    { "ref": "pkg:nuget/Stripe.net@53.0.0", "dependsOn": ["pkg:nuget/System.Text.Json@10.0.0"] },
+    { "ref": "pkg:nuget/System.Text.Json@10.0.0", "dependsOn": [] }
+  ]
+}

@@ -1,0 +1,253 @@
+# The bills of materials of a Marknote product (2026-11-26): the SBOM of what
+# ships and the CBOM of the cryptography it uses, from one place for every
+# repository in the organisation.
+#
+# Called by each product repository's own .github/workflows/boms.yml with the
+# inputs for its stack. The caller decides when to run (its pushes, a weekly
+# schedule, a hand); this workflow decides how. Both documents are CycloneDX
+# 1.6 JSON: the SBOM merged from one BOM per shipped project (the dotnet
+# CycloneDX tool, the npm generator, the Gradle plugin through an init script,
+# or our own reader of a Swift Package.resolved), the CBOM rendered by
+# tools/bom/cbom.mjs from the repository's cbom/crypto-assets.json and a scan
+# of its code. The results are the "sbom" and "cbom" artefacts of the run;
+# Lighthouse reads the latest successful run of each repository.
+#
+# Everything the job runs is pinned: the actions by commit, the generators by
+# version, and the scripts by the ref of this repository the caller names
+# (tools-ref, main by default), so a change here is a change everywhere at
+# once, reviewed once.
+name: Bills of materials
+
+on:
+  workflow_call:
+    inputs:
+      product-name:
+        description: "The product, as Lighthouse names it (\"Marknote Sync\")."
+        required: true
+        type: string
+      product-slug:
+        description: "The file stem: marknote-<slug>.cdx.json (\"sync\")."
+        required: true
+        type: string
+      stack:
+        description: "dotnet, swift or gradle."
+        required: true
+        type: string
+      projects:
+        description: "dotnet: the csproj paths that ship, space separated."
+        required: false
+        type: string
+        default: ''
+      npm-dir:
+        description: "A folder whose package-lock.json lists vendored web libraries; its production dependencies join the SBOM."
+        required: false
+        type: string
+        default: ''
+      npm-install-flags:
+        description: "Flags for npm ci in npm-dir."
+        required: false
+        type: string
+        default: '--no-audit --no-fund'
+      gradle-configs:
+        description: "gradle: a regular expression over the configurations to scan."
+        required: false
+        type: string
+        default: '(release)?[Rr]untimeClasspath'
+      runs-on:
+        description: "The runner; windows-latest where the packages only restore there."
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      dotnet-version:
+        required: false
+        type: string
+        default: '10.0.x'
+      java-version:
+        required: false
+        type: string
+        default: '17'
+      cbom-manifest:
+        description: "The cryptography manifest, relative to the repository root."
+        required: false
+        type: string
+        default: 'cbom/crypto-assets.json'
+      retention-days:
+        required: false
+        type: number
+        default: 90
+      tools-ref:
+        description: "The ref of wearemarknote/.github whose tools/bom scripts run."
+        required: false
+        type: string
+        default: 'main'
+    outputs:
+      sbom-file:
+        value: ${{ jobs.boms.outputs.sbom-file }}
+      cbom-file:
+        value: ${{ jobs.boms.outputs.cbom-file }}
+      cbom-undeclared:
+        description: "Detections the manifest did not declare."
+        value: ${{ jobs.boms.outputs.cbom-undeclared }}
+      cbom-unseen:
+        description: "Declared assets the scan did not see."
+        value: ${{ jobs.boms.outputs.cbom-unseen }}
+
+permissions:
+  contents: read
+
+jobs:
+  boms:
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      PRODUCT_NAME: ${{ inputs.product-name }}
+      PRODUCT_SLUG: ${{ inputs.product-slug }}
+    outputs:
+      sbom-file: ${{ steps.merge.outputs.sbom-file }}
+      cbom-file: ${{ steps.cbom.outputs.cbom-file }}
+      cbom-undeclared: ${{ steps.cbom.outputs.cbom-undeclared }}
+      cbom-unseen: ${{ steps.cbom.outputs.cbom-unseen }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The scripts, from this repository. A called workflow runs in the
+      # caller's checkout and its github context is the caller's, so the
+      # tools are fetched by name; the repository is public and needs no
+      # token.
+      - name: The shared BOM tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: wearemarknote/.github
+          ref: ${{ inputs.tools-ref }}
+          path: .bom-tools
+          sparse-checkout: tools/bom
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      # ---- the SBOM parts, by stack ------------------------------------
+      - name: Set up .NET
+        if: inputs.stack == 'dotnet'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      # Pinned: a new version of the generator can change what a BOM contains.
+      - name: One BOM per shipped .NET project
+        if: inputs.stack == 'dotnet'
+        env:
+          PROJECTS: ${{ inputs.projects }}
+        run: |
+          set -euo pipefail
+          mkdir -p bom/parts
+          dotnet tool install --tool-path .tools CycloneDX --version 6.2.0
+          for project in $PROJECTS; do
+            stem=$(basename "$project" .csproj)
+            .tools/dotnet-CycloneDX "$project" \
+              -c Release --exclude-dev --spec-version 1.6 -F Json \
+              --set-name "$stem" --set-version "${GITHUB_SHA::7}" \
+              -o bom/parts -fn "$stem.cdx.json"
+          done
+
+      - name: Set up Java
+        if: inputs.stack == 'gradle'
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+          cache: gradle
+
+      # The CycloneDX Gradle plugin, applied from an init script so the
+      # build's own files stay as they are; the aggregate BOM of every
+      # project's release runtime classpath.
+      - name: BOM of the Gradle build
+        if: inputs.stack == 'gradle'
+        env:
+          CONFIGS: ${{ inputs.gradle-configs }}
+        run: |
+          set -euo pipefail
+          mkdir -p bom/parts
+          ./gradlew --no-daemon --console=plain \
+            --init-script .bom-tools/tools/bom/cyclonedx.init.gradle \
+            cyclonedxBom "-PbomConfigs=$CONFIGS"
+          cp build/reports/cyclonedx/bom.json bom/parts/gradle.cdx.json
+
+      # Package.resolved is what SwiftPM pinned; no toolchain needed.
+      - name: BOM of the Swift package
+        if: inputs.stack == 'swift'
+        run: |
+          set -euo pipefail
+          mkdir -p bom/parts
+          node .bom-tools/tools/bom/swiftpm-cyclonedx.mjs \
+            --resolved Package.resolved --manifest Package.swift \
+            --name "$PRODUCT_NAME" --version "${GITHUB_SHA::7}" --out bom/parts/swift.cdx.json
+
+      - name: BOM of the vendored web libraries
+        if: inputs.npm-dir != ''
+        working-directory: ${{ inputs.npm-dir }}
+        env:
+          FLAGS: ${{ inputs.npm-install-flags }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/bom/parts"
+          npm ci $FLAGS
+          npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --spec-version 1.6 \
+            --output-format JSON --output-file "$GITHUB_WORKSPACE/bom/parts/web.cdx.json"
+
+      # ---- the two documents --------------------------------------------
+      - name: Merge into the product SBOM
+        id: merge
+        run: |
+          set -euo pipefail
+          out="bom/marknote-$PRODUCT_SLUG.cdx.json"
+          node .bom-tools/tools/bom/merge-cyclonedx.mjs --name "$PRODUCT_NAME" \
+            --version "${GITHUB_SHA::7}" --commit "$GITHUB_SHA" \
+            --out "$out" bom/parts/*.cdx.json
+          echo "sbom-file=$out" >> "$GITHUB_OUTPUT"
+
+      - name: The CBOM
+        id: cbom
+        env:
+          MANIFEST: ${{ inputs.cbom-manifest }}
+          SBOM: ${{ steps.merge.outputs.sbom-file }}
+        run: |
+          set -euo pipefail
+          node .bom-tools/tools/bom/cbom.mjs --manifest "$MANIFEST" --root . --sbom "$SBOM" \
+            --name "$PRODUCT_NAME" --version "${GITHUB_SHA::7}" --commit "$GITHUB_SHA" \
+            --repository "$GITHUB_REPOSITORY" \
+            --out "bom/marknote-$PRODUCT_SLUG.cbom.cdx.json" \
+            --summary "$GITHUB_STEP_SUMMARY" --outputs "$GITHUB_OUTPUT"
+
+      - name: Check both documents
+        env:
+          SBOM: ${{ steps.merge.outputs.sbom-file }}
+          CBOM: ${{ steps.cbom.outputs.cbom-file }}
+        run: node .bom-tools/tools/bom/check.mjs "$SBOM" "$CBOM"
+
+      - name: Upload the SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: ${{ steps.merge.outputs.sbom-file }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: Upload the CBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cbom
+          path: ${{ steps.cbom.outputs.cbom-file }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: Upload the parts, for looking into a merge
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bom-parts
+          path: bom/parts/
+          if-no-files-found: ignore
+          retention-days: 7

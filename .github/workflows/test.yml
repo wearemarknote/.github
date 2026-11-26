@@ -1,0 +1,57 @@
+# The BOM tools' own tests (2026-11-26): the unit tests, then a fixture
+# repository rendered end to end and both results validated against the
+# CycloneDX 1.6 schema by the CycloneDX CLI, pinned by version and checksum.
+# Private repositories run tools/bom on every push, so this is the check that
+# a change here is sound before it reaches them.
+name: Test the BOM tools
+
+on:
+  push:
+    branches: [main]
+    paths: ['tools/bom/**', '.github/workflows/test.yml', '.github/workflows/boms.yml']
+  pull_request:
+    paths: ['tools/bom/**', '.github/workflows/test.yml', '.github/workflows/boms.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Unit tests
+        run: node --test tools/bom/test/*.test.mjs
+
+      - name: The fixture repository, end to end
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          node tools/bom/swiftpm-cyclonedx.mjs \
+            --resolved tools/bom/test/fixtures/swift/Package.resolved --manifest tools/bom/test/fixtures/swift/Package.swift \
+            --name "Fixture" --version test --out out/swift.cdx.json
+          node tools/bom/merge-cyclonedx.mjs --name "Fixture" --version test --commit 0123456789abcdef0123456789abcdef01234567 \
+            --out out/fixture.cdx.json out/swift.cdx.json tools/bom/test/fixtures/sbom/part.cdx.json
+          node tools/bom/cbom.mjs --manifest cbom/crypto-assets.json --root tools/bom/test/fixtures/repo --sbom out/fixture.cdx.json \
+            --name "Fixture" --version test --commit 0123456789abcdef0123456789abcdef01234567 --repository wearemarknote/fixture \
+            --out out/fixture.cbom.cdx.json --summary out/summary.md
+          node tools/bom/check.mjs out/fixture.cdx.json out/fixture.cbom.cdx.json
+          cat out/summary.md
+
+      # Pinned by version and by the checksum of the Linux binary.
+      - name: Validate against the CycloneDX 1.6 schema
+        run: |
+          set -euo pipefail
+          curl -sSL --retry 3 -o cyclonedx https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.33.1/cyclonedx-linux-x64
+          echo "bfc8b2538da86fe239bc53658bbb63c1c8c510a293c1e6891aa5bea5d3c58746  cyclonedx" | sha256sum -c -
+          chmod +x cyclonedx
+          for file in out/fixture.cdx.json out/fixture.cbom.cdx.json out/swift.cdx.json; do
+            ./cyclonedx validate --input-file "$file" --input-format json --input-version v1_6 --fail-on-errors
+          done

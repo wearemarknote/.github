@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wearemarknote/.github/main/tools/bom/crypto-assets.schema.json",
+  "title": "Marknote cryptography manifest",
+  "description": "What a repository declares about the cryptography it uses. tools/bom/cbom.mjs checks it against the code and renders a CycloneDX 1.6 CBOM.",
+  "type": "object",
+  "required": ["version", "repository", "assets"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "repository": { "type": "string", "pattern": "^[\\w.-]+/[\\w.-]+$", "description": "owner/name on GitHub" },
+    "scan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": { "type": "array", "items": { "type": "string" }, "description": "Globs; when given, only matching files are scanned." },
+        "exclude": { "type": "array", "items": { "type": "string" }, "description": "Globs or folder names added to the scanner's default excludes." }
+      }
+    },
+    "libraries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "name": { "type": "string" },
+          "purl": { "type": "string", "description": "The package URL, as the SBOM has it; the component is copied from the SBOM when found." },
+          "platform": { "const": true, "description": "A platform library (the .NET BCL, CryptoKit, the JCA) with no package of its own." },
+          "version": { "type": "string" }
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/asset" }
+    }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$" },
+    "match": {
+      "oneOf": [
+        { "type": "string", "description": "A detector key from tools/bom/lib/catalogue.mjs: an id, or id:variant where the detector captures the algorithm name." },
+        {
+          "type": "object",
+          "required": ["language", "pattern"],
+          "additionalProperties": false,
+          "properties": {
+            "language": { "enum": ["csharp", "swift", "kotlin", "js"] },
+            "pattern": { "type": "string", "description": "A regular expression over the source with its comments removed." },
+            "flags": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "required": ["id", "name", "assetType", "purpose"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "name": { "type": "string" },
+        "assetType": { "enum": ["algorithm", "certificate", "protocol", "related-crypto-material"] },
+        "purpose": { "type": "string", "description": "What the asset is for, in one sentence; becomes the component's description." },
+        "standard": { "type": "string" },
+        "notes": { "type": "string" },
+        "oid": { "type": "string" },
+        "library": { "$ref": "#/$defs/slug", "description": "The id of the library that implements it." },
+        "evidence": { "enum": ["code", "configuration"], "default": "code", "description": "code: the scanner must see it; configuration: asserted, nothing to grep for (TLS, HSTS, key material)." },
+        "securityRelevant": { "type": "boolean", "default": true, "description": "false for a hash used for content addressing or a cache key." },
+        "matches": { "type": "array", "items": { "$ref": "#/$defs/match" } },
+        "files": { "type": "array", "items": { "type": "string" }, "description": "Globs; when given, only detections in these files count for this asset." },
+        "algorithm": {
+          "type": "object",
+          "required": ["primitive"],
+          "additionalProperties": false,
+          "properties": {
+            "primitive": { "enum": ["drbg", "mac", "block-cipher", "stream-cipher", "signature", "hash", "pke", "xof", "kdf", "key-agree", "kem", "ae", "combiner", "other", "unknown"] },
+            "parameterSetIdentifier": { "type": "string" },
+            "curve": { "type": "string" },
+            "mode": { "enum": ["cbc", "ecb", "ccm", "gcm", "cfb", "ofb", "ctr", "other", "unknown"] },
+            "padding": { "enum": ["pkcs5", "pkcs7", "pkcs1v15", "oaep", "raw", "other", "unknown"] },
+            "cryptoFunctions": { "type": "array", "items": { "enum": ["generate", "keygen", "encrypt", "decrypt", "digest", "tag", "keyderive", "sign", "verify", "encapsulate", "decapsulate", "other", "unknown"] } },
+            "classicalSecurityLevel": { "type": "integer", "minimum": 0 },
+            "nistQuantumSecurityLevel": { "type": "integer", "minimum": 0, "maximum": 6 }
+          }
+        },
+        "protocol": {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "enum": ["tls", "ssh", "ipsec", "ike", "sstp", "wpa", "other", "unknown"] },
+            "version": { "type": "string" },
+            "cipherSuites": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "algorithms": { "type": "array", "items": { "$ref": "#/$defs/slug" } },
+                  "identifiers": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "material": {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "enum": ["private-key", "public-key", "secret-key", "key", "ciphertext", "signature", "digest", "initialization-vector", "nonce", "seed", "salt", "shared-secret", "tag", "additional-data", "password", "credential", "token", "other", "unknown"] },
+            "id": { "type": "string" },
+            "state": { "enum": ["pre-activation", "active", "suspended", "deactivated", "compromised", "destroyed"] },
+            "size": { "type": "integer", "minimum": 0 },
+            "format": { "type": "string" },
+            "algorithmRef": { "$ref": "#/$defs/slug" },
+            "securedBy": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mechanism": { "type": "string" },
+                "algorithmRef": { "$ref": "#/$defs/slug" }
+              }
+            }
+          }
+        },
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "subjectName": { "type": "string" },
+            "issuerName": { "type": "string" },
+            "notValidBefore": { "type": "string" },
+            "notValidAfter": { "type": "string" },
+            "signatureAlgorithmRef": { "$ref": "#/$defs/slug" },
+            "subjectPublicKeyRef": { "$ref": "#/$defs/slug" },
+            "certificateFormat": { "type": "string" },
+            "certificateExtension": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

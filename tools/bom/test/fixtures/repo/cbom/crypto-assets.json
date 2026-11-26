@@ -1,0 +1,91 @@
+{
+  "$schema": "https://raw.githubusercontent.com/wearemarknote/.github/main/tools/bom/crypto-assets.schema.json",
+  "version": 1,
+  "repository": "wearemarknote/fixture",
+  "scan": { "exclude": ["generated"] },
+  "libraries": [
+    { "id": "bcl", "name": ".NET base class library", "platform": true },
+    { "id": "example", "name": "Example.Crypto", "purl": "pkg:nuget/Example.Crypto@1.0.0" }
+  ],
+  "assets": [
+    {
+      "id": "aes-256-gcm",
+      "name": "AES-256-GCM",
+      "assetType": "algorithm",
+      "algorithm": { "primitive": "ae", "mode": "gcm", "parameterSetIdentifier": "256", "cryptoFunctions": ["encrypt", "decrypt"], "classicalSecurityLevel": 256, "nistQuantumSecurityLevel": 5 },
+      "purpose": "Document content under a per-document key.",
+      "standard": "NIST SP 800-38D",
+      "library": "bcl",
+      "matches": ["dotnet.aesgcm", "swift.aesgcm", "jvm.cipher:AES/GCM/NoPadding", "js.algorithm:AES-GCM"]
+    },
+    {
+      "id": "hkdf-sha256",
+      "name": "HKDF-SHA256",
+      "assetType": "algorithm",
+      "algorithm": { "primitive": "kdf", "parameterSetIdentifier": "SHA-256", "cryptoFunctions": ["keyderive"], "nistQuantumSecurityLevel": 2 },
+      "purpose": "Per-document keys from the vault key.",
+      "standard": "RFC 5869",
+      "library": "bcl",
+      "matches": ["dotnet.hkdf", "swift.hkdf:SHA256"]
+    },
+    {
+      "id": "hmac-sha256",
+      "name": "HMAC-SHA256",
+      "assetType": "algorithm",
+      "algorithm": { "primitive": "mac", "cryptoFunctions": ["tag"], "nistQuantumSecurityLevel": 2 },
+      "purpose": "Content and path MACs.",
+      "library": "example",
+      "matches": ["swift.hmac:SHA256", "jvm.mac:HmacSHA256"]
+    },
+    {
+      "id": "ecdh-p256",
+      "name": "ECDH P-256",
+      "assetType": "algorithm",
+      "algorithm": { "primitive": "key-agree", "curve": "P-256", "classicalSecurityLevel": 128, "nistQuantumSecurityLevel": 0 },
+      "purpose": "Member key wrapping between devices.",
+      "matches": ["swift.p256-keyagreement"]
+    },
+    {
+      "id": "sha-256",
+      "name": "SHA-256",
+      "assetType": "algorithm",
+      "algorithm": { "primitive": "hash", "cryptoFunctions": ["digest"], "nistQuantumSecurityLevel": 2 },
+      "purpose": "PKCE challenges and token digests.",
+      "matches": ["dotnet.sha256", "swift.sha256", "jvm.messagedigest:SHA-256", "js.algorithm:SHA-256", { "language": "csharp", "pattern": "\\bDigestOf\\(" }]
+    },
+    {
+      "id": "argon2id",
+      "name": "Argon2id",
+      "assetType": "algorithm",
+      "algorithm": { "primitive": "kdf", "parameterSetIdentifier": "m=131072,t=3,p=4", "cryptoFunctions": ["keyderive"] },
+      "purpose": "The passphrase key-encryption key (declared here, absent from the fixture code on purpose).",
+      "matches": ["dotnet.argon2:id"]
+    },
+    {
+      "id": "tls",
+      "name": "TLS 1.2 and above",
+      "assetType": "protocol",
+      "protocol": { "type": "tls", "version": "1.2+", "cipherSuites": [{ "name": "TLS_AES_256_GCM_SHA384", "algorithms": ["aes-256-gcm", "sha-256"], "identifiers": ["0x13,0x02"] }] },
+      "purpose": "Transport to the service, with HSTS.",
+      "evidence": "configuration"
+    },
+    {
+      "id": "vault-key",
+      "name": "Vault key",
+      "assetType": "related-crypto-material",
+      "material": { "type": "secret-key", "size": 256, "algorithmRef": "aes-256-gcm", "securedBy": { "mechanism": "AES-256-GCM key wrap under the passphrase KEK", "algorithmRef": "aes-256-gcm" } },
+      "purpose": "The root key of a vault.",
+      "evidence": "configuration"
+    },
+    {
+      "id": "etag-sha256",
+      "name": "SHA-256 for ETags",
+      "assetType": "algorithm",
+      "algorithm": { "primitive": "hash", "cryptoFunctions": ["digest"] },
+      "purpose": "Cache validators; not a security control.",
+      "securityRelevant": false,
+      "matches": ["dotnet.sha256"],
+      "files": ["src/Caching/**"]
+    }
+  ]
+}
