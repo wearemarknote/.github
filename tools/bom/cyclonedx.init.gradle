@@ -1,0 +1,42 @@
+// Copyright (c) 2026 Marknote Limited. All rights reserved.
+//
+// Part of the shared bills-of-materials workflow (wearemarknote/.github).
+//
+// Applies the CycloneDX Gradle plugin to a build from outside, so the Android
+// client's own build files stay as they are (2026-11-26). Run from the
+// repository root:
+//
+//   ./gradlew --init-script <this file> cyclonedxBom -PbomConfigs=<regex> [-PbomSkip=<regex>]
+//
+// The aggregate BOM lands in build/reports/cyclonedx/bom.json. Each project's
+// direct BOM scans only the configurations bomConfigs names (default: the
+// release runtime classpaths), never the test, debug, lint or annotation
+// processor ones.
+
+import org.cyclonedx.gradle.CyclonedxPlugin
+import org.cyclonedx.gradle.CyclonedxDirectTask
+import org.cyclonedx.model.Component
+
+initscript {
+    repositories {
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath 'org.cyclonedx.bom:org.cyclonedx.bom.gradle.plugin:3.6.1'
+    }
+}
+
+rootProject {
+    apply plugin: CyclonedxPlugin
+
+    def include = project.hasProperty('bomConfigs') ? project.property('bomConfigs') : '(release)?[Rr]untimeClasspath'
+    def skip = project.hasProperty('bomSkip') ? project.property('bomSkip') : '(?i).*(test|debug|preview|lint|kapt|ksp|annotationProcessor).*'
+
+    allprojects {
+        tasks.withType(CyclonedxDirectTask).configureEach {
+            includeConfigs = [include]
+            skipConfigs = [skip]
+            projectType = project.path == ':app' ? Component.Type.APPLICATION : Component.Type.LIBRARY
+        }
+    }
+}

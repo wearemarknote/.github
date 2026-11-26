@@ -28,3 +28,7 @@ Themes and plugins are free for everyone. A submission is a pull request; each r
 ---
 
 Marknote is made by Gregory Hulsmann. © Gregory Hulsmann. All rights reserved.
+
+## For the people who build it
+
+The organisation's software and cryptography bills of materials come from one shared workflow in this repository: [`tools/bom`](../tools/bom/README.md). Each product repository calls it and publishes a CycloneDX 1.6 SBOM and CBOM on every push and weekly.
