@@ -67,3 +67,39 @@ test('a file that is not a CycloneDX BOM stops the merge', () => {
   writeFileSync(bad, JSON.stringify({ hello: 'world' }));
   assert.throws(() => execFileSync(process.execPath, [script, '--name', 'Fixture', '--out', join(dir, 'out.json'), bad], { encoding: 'utf8', stdio: 'pipe' }), /is not a CycloneDX BOM/);
 });
+
+// The shape the CycloneDX Gradle plugin gives the Android client: a root
+// project that depends on nothing, the :app module as a component of type
+// application, the other modules as libraries, every purl with a qualifier.
+const gradlePart = {
+  bomFormat: 'CycloneDX',
+  specVersion: '1.6',
+  version: 1,
+  metadata: { component: { type: 'library', 'bom-ref': 'pkg:maven/unspecified/fixture-android@unspecified?project_path=%3A', name: 'fixture-android' } },
+  components: [
+    { type: 'application', 'bom-ref': 'pkg:maven/fixture-android/app@unspecified?project_path=%3Aapp', name: 'app', purl: 'pkg:maven/fixture-android/app@unspecified?project_path=%3Aapp' },
+    { type: 'library', 'bom-ref': 'pkg:maven/fixture-android/core@unspecified?project_path=%3Acore', name: 'core', purl: 'pkg:maven/fixture-android/core@unspecified?project_path=%3Acore' },
+    { type: 'library', 'bom-ref': 'pkg:maven/androidx.biometric/biometric@1.1.0?type=aar', name: 'biometric', group: 'androidx.biometric', version: '1.1.0', purl: 'pkg:maven/androidx.biometric/biometric@1.1.0?type=aar' },
+    { type: 'library', 'bom-ref': 'pkg:maven/com.squareup.okhttp3/okhttp@5.5.1?type=pom', name: 'okhttp', group: 'com.squareup.okhttp3', version: '5.5.1', purl: 'pkg:maven/com.squareup.okhttp3/okhttp@5.5.1?type=pom' },
+  ],
+  dependencies: [
+    { ref: 'pkg:maven/fixture-android/app@unspecified?project_path=%3Aapp', dependsOn: ['pkg:maven/fixture-android/core@unspecified?project_path=%3Acore', 'pkg:maven/androidx.biometric/biometric@1.1.0?type=aar'] },
+    { ref: 'pkg:maven/fixture-android/core@unspecified?project_path=%3Acore', dependsOn: ['pkg:maven/com.squareup.okhttp3/okhttp@5.5.1?type=pom'] },
+  ],
+};
+
+test('a part whose root depends on nothing lends the product its application module: left out, its dependencies direct', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bom-merge-'));
+  const part = join(dir, 'gradle.cdx.json');
+  const out = join(dir, 'merged.cdx.json');
+  writeFileSync(part, JSON.stringify(gradlePart));
+
+  const stdout = execFileSync(process.execPath, [script, '--name', 'Fixture', '--version', 'test', '--out', out, part], { encoding: 'utf8', stdio: 'pipe' });
+  assert.match(stdout, /3 components \(2 direct\)/);
+
+  const merged = JSON.parse(readFileSync(out, 'utf8'));
+  assert.deepEqual(validate(merged), { ok: true, errors: [] });
+  assert.deepEqual(merged.components.map(c => c.name).sort(), ['biometric', 'core', 'okhttp']);
+  assert.deepEqual(merged.dependencies[0].dependsOn, ['pkg:maven/androidx.biometric/biometric@1.1.0?type=aar', 'pkg:maven/fixture-android/core@unspecified?project_path=%3Acore']);
+  assert.deepEqual(merged.dependencies.find(d => d.ref.includes('/core@')).dependsOn, ['pkg:maven/com.squareup.okhttp3/okhttp@5.5.1?type=pom']);
+});

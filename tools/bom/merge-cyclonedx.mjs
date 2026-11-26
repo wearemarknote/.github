@@ -52,7 +52,17 @@ for (const file of inputs) {
 
   for (const tool of bom.metadata?.tools?.components ?? []) tools.set(`${tool.name}@${tool.version}`, tool);
 
+  // A part's own application module is the product itself, not a component
+  // of it: the Gradle plugin lists the Android client's :app as a component
+  // of type application under a root project that depends on nothing. It is
+  // left out, and what it depends on counts as direct.
+  const own = new Set();
   for (const component of bom.components ?? []) {
+    if (component.type === 'application') {
+      own.add(component['bom-ref'] ?? keyOf(component));
+      console.error(`${file}: ${component.name} is the product's own application; its dependencies count as direct`);
+      continue;
+    }
     const key = keyOf(component);
     if (!components.has(key)) components.set(key, component);
     refAlias.set(component['bom-ref'] ?? key, components.get(key)['bom-ref'] ?? key);
@@ -61,7 +71,7 @@ for (const file of inputs) {
   const partRoot = bom.metadata?.component?.['bom-ref'];
   for (const dep of bom.dependencies ?? []) {
     const targets = (dep.dependsOn ?? []).map(r => refAlias.get(r) ?? r);
-    if (dep.ref === partRoot) {
+    if (dep.ref === partRoot || own.has(dep.ref)) {
       targets.forEach(t => direct.add(t));
       continue;
     }
