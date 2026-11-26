@@ -174,8 +174,14 @@ function undeclaredComponent(key, detections, extraDetectors) {
   });
 }
 
+// The purl without qualifiers or subpath, for matching.
+const barePurl = p => p.split("#")[0].split("?")[0];
+
 function libraryComponents(manifest, sbom) {
-  const bySbomPurl = new Map((sbom?.components ?? []).filter(c => c.purl).map(c => [c.purl, c]));
+  // A purl in the SBOM may carry qualifiers the manifest leaves out (the Gradle
+  // plugin writes ?type=aar on every Android package): match without the
+  // qualifiers and the subpath, and take the form the SBOM uses.
+  const bySbomPurl = new Map((sbom?.components ?? []).filter(c => c.purl).map(c => [barePurl(c.purl), c]));
   const refs = new Map();
   const components = manifest.libraries.map(library => {
     if (library.platform) {
@@ -183,7 +189,7 @@ function libraryComponents(manifest, sbom) {
       refs.set(library.id, bomRef);
       return { type: 'library', 'bom-ref': bomRef, name: library.name, version: library.version, properties: [P('platform', 'true')] };
     }
-    const known = bySbomPurl.get(library.purl);
+    const known = bySbomPurl.get(barePurl(library.purl));
     const bomRef = known?.['bom-ref'] ?? library.purl;
     refs.set(library.id, bomRef);
     return clean({
@@ -192,7 +198,7 @@ function libraryComponents(manifest, sbom) {
       name: known?.name ?? library.name,
       group: known?.group,
       version: known?.version ?? library.version,
-      purl: library.purl,
+      purl: known?.purl ?? library.purl,
       licenses: known?.licenses,
       properties: known ? undefined : [P('in-sbom', 'false')],
     });

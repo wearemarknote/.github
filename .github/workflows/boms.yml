@@ -243,3 +243,11 @@ jobs:
           path: ${{ steps.cbom.outputs.cbom-file }}
           if-no-files-found: error
           retention-days: ${{ inputs.retention-days }}
+
+      - name: Upload the parts, for looking into a merge
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bom-parts
+          path: bom/parts/
+          if-no-files-found: ignore
+          retention-days: 7

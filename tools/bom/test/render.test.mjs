@@ -136,3 +136,15 @@ test('without an SBOM a library by purl is synthesised and says so', () => {
   assert.equal(example.properties.find(p => p.name === 'marknote:cbom:in-sbom').value, 'false');
   assert.deepEqual(validate(alone), { ok: true, errors: [] });
 });
+
+test('a library purl matches the SBOM without its qualifiers and takes the form the SBOM uses', () => {
+  // The Gradle plugin writes ?type=aar on every Android package; the manifest names the bare purl.
+  const qualified = { ...sbom, components: sbom.components.map(c => c.purl === 'pkg:nuget/Example.Crypto@1.0.0' ? { ...c, purl: c.purl + '?type=aar', 'bom-ref': c.purl + '?type=aar' } : c) };
+  const { bom: joined } = render({ manifest, detections, sbom: qualified, extraDetectors: manifest.inlineDetectors, meta: { name: 'Fixture', version: 'test' } });
+  const example = joined.components.find(c => c.name === 'Example.Crypto');
+  assert.equal(example['bom-ref'], 'pkg:nuget/Example.Crypto@1.0.0?type=aar');
+  assert.equal(example.purl, 'pkg:nuget/Example.Crypto@1.0.0?type=aar');
+  assert.equal(example.properties?.find(p => p.name === 'marknote:cbom:in-sbom'), undefined);
+  assert.ok(joined.dependencies.some(d => d.ref === 'pkg:nuget/Example.Crypto@1.0.0?type=aar' && d.provides?.length), 'the library still provides its assets');
+  assert.deepEqual(validate(joined), { ok: true, errors: [] });
+});
