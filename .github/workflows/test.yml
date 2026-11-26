@@ -28,7 +28,7 @@ jobs:
           node-version: '22'
 
       - name: Unit tests
-        run: node --test tools/bom/test
+        run: node --test tools/bom/test/*.test.mjs
 
       - name: The fixture repository, end to end
         run: |

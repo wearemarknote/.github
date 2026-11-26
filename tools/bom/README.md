@@ -76,4 +76,4 @@ Occurrences carry a location, a line number and the matched symbol, never a line
 
 ## Working on the tools
 
-`node --test tools/bom/test` runs the unit tests against the fixture repository in `test/fixtures/repo`; the test workflow renders the fixtures end to end and validates them with the CycloneDX CLI. A change to the catalogue is a change to every repository's next run, so a new detector should be tried against the real repositories first (`--tools-ref` points a caller at a branch).
+`node --test tools/bom/test/*.test.mjs` runs the unit tests against the fixture repository in `test/fixtures/repo`; the test workflow renders the fixtures end to end and validates them with the CycloneDX CLI. A change to the catalogue is a change to every repository's next run, so a new detector should be tried against the real repositories first (`--tools-ref` points a caller at a branch).
